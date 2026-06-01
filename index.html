@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qwen Coder Agent Studio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="explorer">
+        <div class="panel-header">
+          <div class="workspace-title">
+            <p class="eyebrow">Workspace</p>
+            <h1>Qwen Coder</h1>
+            <p class="path-pill" id="root-path">No folder open</p>
+          </div>
+          <button class="icon-button" id="open-folder-button" title="Open folder">📂</button>
+        </div>
+
+        <div class="workspace-actions">
+          <button id="refresh-button">Refresh</button>
+          <button id="new-file-button">New File</button>
+          <button id="new-folder-button">New Folder</button>
+        </div>
+
+        <nav class="file-tree" id="file-tree"></nav>
+      </aside>
+
+      <section class="editor-panel">
+        <header class="editor-topbar">
+          <div>
+            <p class="eyebrow">Editing</p>
+            <h2 id="active-file-name">Select a file</h2>
+          </div>
+          <div class="editor-actions">
+            <button id="format-button">Tidy</button>
+            <button id="save-button" class="primary">Save Changes</button>
+          </div>
+        </header>
+
+        <div class="editor-wrap">
+          <div class="line-numbers" id="line-numbers"></div>
+          <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        </div>
+
+        <footer class="status-bar">
+          <span id="status-text">Ready</span>
+          <span id="file-meta">0 lines</span>
+        </footer>
+      </section>
+
+      <aside class="agent-panel">
+        <header class="agent-header">
+          <div>
+            <p class="eyebrow">Local AI</p>
+            <h2>Agent Chat</h2>
+          </div>
+          <span class="model-pill">qwen2.5-coder-7b-instruct</span>
+        </header>
+
+        <div class="settings-toggle" id="settings-toggle">
+          <span>Connection Settings</span>
+          <span>▼</span>
+        </div>
+
+        <section class="settings-content" id="settings-content">
+          <label>
+            Endpoint
+            <input id="endpoint-input" value="http://127.0.0.1:1234/v1/chat/completions" />
+          </label>
+          <label>
+            Model
+            <input id="model-input" value="qwen2.5-coder-7b-instruct" />
+          </label>
+        </section>
+
+        <section class="agent-log" id="agent-log"></section>
+
+        <form class="composer" id="chat-form">
+          <div class="input-container">
+            <textarea id="prompt-input" rows="3" placeholder="Ask to fix, explain, or create..."></textarea>
+            
+            <div class="composer-actions">
+              <label class="toggle">
+                <input id="agent-mode" type="checkbox" checked />
+                <span>Agent Edit Mode</span>
+              </label>
+
+              <div class="thinking-indicator" id="thinking-indicator">
+                <div class="dot-animation">
+                  <div class="dot"></div>
+                  <div class="dot"></div>
+                  <div class="dot"></div>
+                </div>
+                <span>Thinking...</span>
+                <button type="button" class="danger" id="stop-button">Stop</button>
+              </div>
+
+              <button class="primary" id="send-button" type="submit">Send</button>
+            </div>
+          </div>
+        </form>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
