@@ -12,4 +12,8 @@ contextBridge.exposeInMainWorld("workspace", {
   abortChat: () => ipcRenderer.invoke("lmstudio:abort"),
   onStreamChunk: (callback) => ipcRenderer.on("lmstudio:stream-chunk", (_event, chunk) => callback(chunk)),
   onStreamDone: (callback) => ipcRenderer.on("lmstudio:stream-done", () => callback()),
+  // Real Terminal IPC
+  sendTerminalData: (data) => ipcRenderer.send("terminal:send-data", data),
+  resizeTerminal: (cols, rows) => ipcRenderer.send("terminal:resize", { cols, rows }),
+  onTerminalData: (callback) => ipcRenderer.on("terminal:incoming-data", (_event, data) => callback(data)),
 });

@@ -26,11 +26,39 @@ async function writeLastFolder(folderPath) {
   await fs.writeFile(workspaceStatePath(), JSON.stringify({ lastFolder: folderPath }), "utf8");
 }
 
+const pty = require("node-pty");
+const os = require("os");
+
+const shell = os.platform() === "win32" ? "powershell.exe" : "zsh";
+let ptyProcess = null;
+function setupPty(mainWindow) {
+  ptyProcess = pty.spawn(shell, [], {
+    name: "xterm-color",
+    cols: 80,
+    rows: 24,
+    cwd: process.env.HOME,
+    env: process.env,
+  });
+
+  ptyProcess.onData((data) => {
+    mainWindow.webContents.send("terminal:incoming-data", data);
+  });
+
+  ipcMain.on("terminal:send-data", (event, data) => {
+    if (ptyProcess) ptyProcess.write(data);
+  });
+
+  ipcMain.on("terminal:resize", (event, { cols, rows }) => {
+    if (ptyProcess) ptyProcess.resize(cols, rows);
+  });
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1600,
     height: 980,
     backgroundColor: "#101316",
+    icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -41,6 +69,7 @@ function createWindow() {
 
   win.removeMenu();
   win.loadFile(path.join(__dirname, "index.html"));
+  setupPty(win);
 }
 
 async function isReadableText(filePath) {

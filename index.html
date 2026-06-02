@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Qwen Coder Agent Studio</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="node_modules/xterm/css/xterm.css" />
+    <script src="node_modules/xterm/lib/xterm.js"></script>
+    <script src="node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -44,6 +47,18 @@
           <textarea id="editor" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
         </div>
 
+        <div class="terminal-panel">
+          <div class="terminal-header">
+            <span>Terminal</span>
+            <div class="terminal-actions">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+          </div>
+          <div id="terminal-container" style="flex: 1; overflow: hidden; padding: 4px;"></div>
+        </div>
+
         <footer class="status-bar">
           <span id="status-text">Ready</span>
           <span id="file-meta">0 lines</span>
@@ -56,7 +71,7 @@
             <p class="eyebrow">Local AI</p>
             <h2>Agent Chat</h2>
           </div>
-          <span class="model-pill">qwen2.5-coder-3b-instruct</span>
+          <span class="model-pill" id="model-badge">Qwen2.5-Coder-7B-Instruct</span>
         </header>
 
         <div class="settings-toggle" id="settings-toggle">
@@ -71,8 +86,94 @@
           </label>
           <label>
             Model
-            <input id="model-input" value="qwen2.5-coder-3b-instruct" />
+            <select id="model-input">
+              <optgroup label="Qwen Coder Family">
+                <option value="qwen2.5-coder-0.5b-instruct">Qwen2.5-Coder-0.5B-Instruct</option>
+                <option value="qwen2.5-coder-1.5b-instruct">Qwen2.5-Coder-1.5B-Instruct</option>
+                <option value="qwen2.5-coder-3b-instruct">Qwen2.5-Coder-3B-Instruct</option>
+                <option value="qwen2.5-coder-7b-instruct" selected>Qwen2.5-Coder-7B-Instruct</option>
+                <option value="qwen2.5-coder-14b-instruct">Qwen2.5-Coder-14B-Instruct</option>
+                <option value="qwen2.5-coder-32b-instruct">Qwen2.5-Coder-32B-Instruct</option>
+                <option value="qwen3-coder-4b-instruct">Qwen3-Coder-4B-Instruct</option>
+                <option value="qwen3-coder-7b-instruct">Qwen3-Coder-7B-Instruct</option>
+                <option value="qwen3-coder-14b-instruct">Qwen3-Coder-14B-Instruct</option>
+                <option value="qwen3-coder-30b-a3b-instruct">Qwen3-Coder-30B-A3B-Instruct (MoE)</option>
+              </optgroup>
+              <optgroup label="DeepSeek Coder Family">
+                <option value="deepseek-coder-1.3b-instruct">DeepSeek-Coder-1.3B-Instruct</option>
+                <option value="deepseek-coder-5.7b-instruct">DeepSeek-Coder-5.7B-Instruct</option>
+                <option value="deepseek-coder-6.7b-instruct">DeepSeek-Coder-6.7B-Instruct</option>
+                <option value="deepseek-coder-33b-instruct">DeepSeek-Coder-33B-Instruct</option>
+                <option value="deepseek-coder-v2-lite-instruct">DeepSeek-Coder-V2-Lite-Instruct</option>
+                <option value="deepseek-coder-v2-instruct">DeepSeek-Coder-V2-Instruct</option>
+              </optgroup>
+              <optgroup label="CodeLlama Family">
+                <option value="codellama-7b">CodeLlama-7B</option>
+                <option value="codellama-7b-instruct">CodeLlama-7B-Instruct</option>
+                <option value="codellama-7b-python">CodeLlama-7B-Python</option>
+                <option value="codellama-13b">CodeLlama-13B</option>
+                <option value="codellama-13b-instruct">CodeLlama-13B-Instruct</option>
+                <option value="codellama-13b-python">CodeLlama-13B-Python</option>
+                <option value="codellama-34b">CodeLlama-34B</option>
+                <option value="codellama-34b-instruct">CodeLlama-34B-Instruct</option>
+                <option value="codellama-34b-python">CodeLlama-34B-Python</option>
+              </optgroup>
+              <optgroup label="CodeGemma Family">
+                <option value="codegemma-2b">CodeGemma-2B</option>
+                <option value="codegemma-7b">CodeGemma-7B</option>
+                <option value="codegemma-7b-instruct">CodeGemma-7B-Instruct</option>
+                <option value="codegemma-7b-python">CodeGemma-7B-Python</option>
+              </optgroup>
+              <optgroup label="StarCoder Family">
+                <option value="starcoder-15b">StarCoder-15B</option>
+                <option value="starcoderbase-15b">StarCoderBase-15B</option>
+                <option value="starcoder-instruct-15b">StarCoder-Instruct-15B</option>
+                <option value="starcoder2-3b">StarCoder2-3B</option>
+                <option value="starcoder2-7b">StarCoder2-7B</option>
+                <option value="starcoder2-15b">StarCoder2-15B</option>
+              </optgroup>
+              <optgroup label="WizardCoder Family">
+                <option value="wizardcoder-3b">WizardCoder-3B</option>
+                <option value="wizardcoder-7b">WizardCoder-7B</option>
+                <option value="wizardcoder-13b">WizardCoder-13B</option>
+                <option value="wizardcoder-15b">WizardCoder-15B</option>
+                <option value="wizardcoder-python-34b">WizardCoder-Python-34B</option>
+              </optgroup>
+              <optgroup label="Mistral / Agent Coding Models">
+                <option value="mistral-7b-instruct">Mistral-7B-Instruct</option>
+                <option value="mixtral-8x7b-instruct">Mixtral-8x7B-Instruct</option>
+                <option value="mixtral-8x22b-instruct">Mixtral-8x22B-Instruct</option>
+                <option value="codestral-22b">Codestral-22B</option>
+                <option value="devstral">Devstral</option>
+              </optgroup>
+              <optgroup label="IBM Granite Code">
+                <option value="granite-8b-code-instruct">Granite-8B-Code-Instruct</option>
+                <option value="granite-20b-code-instruct">Granite-20B-Code-Instruct</option>
+                <option value="granite-34b-code-instruct">Granite-34B-Code-Instruct</option>
+              </optgroup>
+              <optgroup label="GLM Coding Family">
+                <option value="glm-4-9b-chat">GLM-4-9B-Chat</option>
+                <option value="glm-4-9b-code">GLM-4-9B-Code</option>
+                <option value="glm-4.5-instruct">GLM-4.5-Instruct</option>
+                <option value="glm-4.7-instruct">GLM-4.7-Instruct</option>
+                <option value="glm-5-instruct">GLM-5.x-Instruct</option>
+              </optgroup>
+              <optgroup label="Other / Community / Legacy Models">
+                <option value="phind-codellama-34b-v2">Phind-CodeLlama-34B-v2</option>
+                <option value="replit-code-v1-3b">Replit-Code-v1-3B</option>
+                <option value="replit-code-v1-7b">Replit-Code-v1-7B</option>
+                <option value="santacoder-1.1b">SantaCoder-1.1B</option>
+                <option value="opencoder">OpenCoder</option>
+              </optgroup>
+              <optgroup label="Custom Models" id="custom-models-group">
+                <!-- Custom models will be injected here -->
+              </optgroup>
+            </select>
           </label>
+          <div class="custom-model-adder">
+            <input id="custom-model-input" placeholder="Enter model name (e.g. gpt-4)" />
+            <button id="add-custom-model-button">+</button>
+          </div>
         </section>
 
         <section class="agent-log" id="agent-log"></section>

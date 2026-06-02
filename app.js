@@ -27,6 +27,7 @@ const elements = {
   promptInput: document.querySelector("#prompt-input"),
   endpointInput: document.querySelector("#endpoint-input"),
   modelInput: document.querySelector("#model-input"),
+  modelBadge: document.querySelector("#model-badge"),
   agentMode: document.querySelector("#agent-mode"),
   sendButton: document.querySelector("#send-button"),
   stopButton: document.querySelector("#stop-button"),
@@ -39,7 +40,36 @@ const elements = {
   newFileButton: document.querySelector("#new-file-button"),
   newFolderButton: document.querySelector("#new-folder-button"),
   refreshButton: document.querySelector("#refresh-button"),
+  customModelInput: document.querySelector("#custom-model-input"),
+  addCustomModelButton: document.querySelector("#add-custom-model-button"),
+  customModelsGroup: document.querySelector("#custom-models-group"),
 };
+
+function loadCustomModels() {
+  const customModels = JSON.parse(localStorage.getItem("customModels") || "[]");
+  elements.customModelsGroup.innerHTML = "";
+  customModels.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    elements.customModelsGroup.appendChild(opt);
+  });
+}
+
+function addCustomModel() {
+  const model = elements.customModelInput.value.trim();
+  if (!model) return;
+
+  const customModels = JSON.parse(localStorage.getItem("customModels") || "[]");
+  if (!customModels.includes(model)) {
+    customModels.push(model);
+    localStorage.setItem("customModels", JSON.stringify(customModels));
+    loadCustomModels();
+    elements.modelInput.value = model;
+    elements.modelBadge.textContent = model;
+  }
+  elements.customModelInput.value = "";
+}
 
 function setStatus(message) {
   elements.statusText.textContent = message;
@@ -164,6 +194,7 @@ function renderTreeNode(node, isRoot = false) {
 async function openFolder() {
   const folder = await window.workspace.openFolder();
   if (!folder) return;
+  logToTerminal(`Opening folder: ${folder.path}`);
   state.rootPath = folder.path;
   elements.rootPath.textContent = folder.path;
   state.tree = folder.tree;
@@ -177,6 +208,7 @@ async function openFolder() {
 async function openFile(path, options = {}) {
   if (!path) return;
   const content = await window.workspace.readFile(path);
+  if (!options.quiet) logToTerminal(`Reading file: ${path.split(/[\\/]/).pop()}`);
   state.activePath = path;
   state.activeContent = content;
   state.fileCache.set(path, content);
@@ -191,6 +223,7 @@ async function openFile(path, options = {}) {
 async function saveCurrentFile() {
   if (!state.activePath) return;
   const content = elements.editor.value;
+  logToTerminal(`Saving file: ${state.activePath.split(/[\\/]/).pop()}`);
   await window.workspace.writeFile(state.activePath, content);
   state.fileCache.set(state.activePath, content);
   state.activeContent = content;
@@ -211,6 +244,41 @@ async function refreshWorkspace(preferredPath = "") {
   renderFileTree();
 }
 
+function setupTerminal() {
+  const term = new Terminal({
+    theme: {
+      background: "#080a0c",
+      foreground: "#a9b7c6",
+      cursor: "#4ae3b5",
+      selection: "rgba(74, 227, 181, 0.3)",
+    },
+    fontSize: 12,
+    fontFamily: 'var(--mono)',
+    cursorBlink: true,
+  });
+
+  const fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(document.getElementById("terminal-container"));
+  fitAddon.fit();
+
+  term.onData((data) => window.workspace.sendTerminalData(data));
+  window.workspace.onTerminalData((data) => term.write(data));
+
+  window.addEventListener("resize", () => fitAddon.fit());
+  
+  // Initial resize
+  const dims = fitAddon.proposeDimensions();
+  if (dims) window.workspace.resizeTerminal(dims.cols, dims.rows);
+
+  return term;
+}
+
+function logToTerminal(text, type = "info") {
+  // Legacy mock logger - can be redirected or silenced
+  console.log(`[Terminal Mock] ${text}`);
+}
+
 async function buildWorkspaceContext(prompt) {
   if (!state.tree) return "";
   const files = flattenFiles(state.tree);
@@ -228,6 +296,18 @@ async function buildWorkspaceContext(prompt) {
   let totalChars = 0;
   for (const f of picked) {
     let content = state.fileCache.get(f.path) || (await window.workspace.readFile(f.path));
+    
+    // REDACTION: Hide all terminal-related implementation details from the AI
+    content = content.replace(/<div class="terminal-panel">[\s\S]*?<\/div>/g, "<!-- [REDACTED] -->");
+    content = content.replace(/<link rel="stylesheet" href="node_modules\/xterm[\s\S]*?>/g, "<!-- [REDACTED] -->");
+    content = content.replace(/<script src="node_modules\/xterm[\s\S]*?<\/script>/g, "<!-- [REDACTED] -->");
+    content = content.replace(/\.terminal-[\s\S]*?\{[\s\S]*?\}/g, "/* [REDACTED] */");
+    content = content.replace(/function setupTerminal[\s\S]*?\}/g, "// [REDACTED]");
+    content = content.replace(/function logToTerminal[\s\S]*?\}/g, "// [REDACTED]");
+    content = content.replace(/window\.workspace\.(sendTerminalData|resizeTerminal|onTerminalData)[\s\S]*?,/g, "");
+    content = content.replace(/const pty = require\("node-pty"\);[\s\S]*?setupPty\(win\);/g, "// [REDACTED]");
+    content = content.replace(/ipcMain\.on\("terminal:[\s\S]*?\}\);/g, "// [REDACTED]");
+
     const clipped = content.length > MAX_FILE_CHARS ? `${content.slice(0, MAX_FILE_CHARS)}\n... [truncated]` : content;
     const block = `FILE: ${f.relativePath || f.path}\n\`\`\`\n${clipped}\n\`\`\``;
     if (totalChars + block.length > MAX_CONTEXT_CHARS) break;
@@ -251,6 +331,7 @@ async function sendMessage(event) {
 
   elements.promptInput.value = "";
   renderMessage("user", prompt);
+  logToTerminal(`User: ${prompt.slice(0, 30)}${prompt.length > 30 ? "..." : ""}`);
   elements.sendButton.style.display = "none";
   elements.thinkingIndicator.classList.add("active");
   setStatus("Agent is working...");
@@ -260,6 +341,7 @@ async function sendMessage(event) {
   const context = await buildWorkspaceContext(prompt);
 
   state.currentAgentMessage = renderMessage("agent", "");
+  logToTerminal(`Requesting LLM (${model})...`);
 
   const payload = {
     model,
@@ -275,6 +357,7 @@ async function sendMessage(event) {
     const res = await window.workspace.chatWithLlm(endpoint, payload);
     if (!res.ok && res.status !== -1) throw new Error(res.body);
   } catch (error) {
+    logToTerminal(`LLM Error: ${error.message}`, "error");
     renderMessage("system", `Error: ${error.message}`);
     state.currentAgentMessage = null;
     restoreComposerState();
@@ -293,6 +376,7 @@ async function applyAgentActions(content) {
       for (const a of parsed.actions || []) {
         if (a.type === "write_file") {
           const fullPath = (await window.workspace.resolvePath(state.rootPath, a.path));
+          logToTerminal(`Agent writing file: ${a.path}`);
           await window.workspace.writeFile(fullPath, a.content);
           state.fileCache.set(fullPath, a.content);
           applied++;
@@ -302,6 +386,7 @@ async function applyAgentActions(content) {
   }
   if (applied > 0) {
     await refreshWorkspace();
+    logToTerminal(`Successfully applied ${applied} agent edits.`);
     setStatus(`Applied ${applied} edits.`);
   }
 }
@@ -313,7 +398,20 @@ function wireEvents() {
   elements.chatForm.addEventListener("submit", sendMessage);
   elements.editor.addEventListener("input", onEditorChange);
   elements.stopButton.addEventListener("click", () => window.workspace.abortChat());
-  
+
+  elements.addCustomModelButton.addEventListener("click", addCustomModel);
+  elements.customModelInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addCustomModel();
+    }
+  });
+
+  elements.modelInput.addEventListener("change", () => {
+    const selectedOption = elements.modelInput.options[elements.modelInput.selectedIndex];
+    elements.modelBadge.textContent = selectedOption.text;
+  });
+
   elements.settingsToggle.addEventListener("click", () => {
     elements.settingsContent.classList.toggle("open");
     elements.settingsToggle.querySelector("span:last-child").textContent = 
@@ -337,7 +435,18 @@ function wireEvents() {
 }
 
 async function bootstrap() {
+  loadCustomModels();
   wireEvents();
+  
+  // Sync initial model badge
+  if (elements.modelInput && elements.modelBadge) {
+    const selectedOption = elements.modelInput.options[elements.modelInput.selectedIndex];
+    if (selectedOption) {
+      elements.modelBadge.textContent = selectedOption.text;
+    }
+  }
+
+  setupTerminal();
   renderFileTree();
   updateEditorMeta();
   const last = await window.workspace.getLastFolder();

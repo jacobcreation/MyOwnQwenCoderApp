@@ -35,12 +35,14 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
   transition: all 0.2s ease;
 }
 
 input,
+select,
 textarea {
   border: 1px solid var(--border);
   background: var(--panel-soft);
@@ -57,6 +59,7 @@ textarea::placeholder {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: rgba(85, 224, 188, 0.5);
   box-shadow: 0 0 0 3px rgba(85, 224, 188, 0.12);
@@ -281,6 +284,51 @@ h2 {
   min-height: 0;
 }
 
+.terminal-panel {
+  height: 200px;
+  background: #080a0c;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-header {
+  height: 32px;
+  padding: 0 16px;
+  background: var(--panel-strong);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.terminal-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dot.red { background: #ff5f56; }
+.dot.yellow { background: #ffbd2e; }
+.dot.green { background: #27c93f; }
+
+/* xterm custom overrides */
+.xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--border);
+}
+
 .status-bar {
   height: 28px;
   display: flex;
@@ -339,8 +387,40 @@ h2 {
   color: var(--muted);
 }
 
-.settings-content input {
+.settings-content input,
+.settings-content select {
   width: 100%;
+}
+
+.custom-model-adder {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.custom-model-adder input {
+  flex: 1;
+  font-size: 12px;
+}
+
+.custom-model-adder button {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
+}
+
+.custom-model-adder button:hover {
+  opacity: 0.9;
 }
 
 .toggle {
