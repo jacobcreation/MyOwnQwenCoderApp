@@ -298,15 +298,15 @@ async function buildWorkspaceContext(prompt) {
     let content = state.fileCache.get(f.path) || (await window.workspace.readFile(f.path));
     
     // REDACTION: Hide all terminal-related implementation details from the AI
-    content = content.replace(/<div class="terminal-panel">[\s\S]*?<\/div>/g, "<!-- [REDACTED] -->");
-    content = content.replace(/<link rel="stylesheet" href="node_modules\/xterm[\s\S]*?>/g, "<!-- [REDACTED] -->");
-    content = content.replace(/<script src="node_modules\/xterm[\s\S]*?<\/script>/g, "<!-- [REDACTED] -->");
-    content = content.replace(/\.terminal-[\s\S]*?\{[\s\S]*?\}/g, "/* [REDACTED] */");
-    content = content.replace(/function setupTerminal[\s\S]*?\}/g, "// [REDACTED]");
-    content = content.replace(/function logToTerminal[\s\S]*?\}/g, "// [REDACTED]");
-    content = content.replace(/window\.workspace\.(sendTerminalData|resizeTerminal|onTerminalData)[\s\S]*?,/g, "");
-    content = content.replace(/const pty = require\("node-pty"\);[\s\S]*?setupPty\(win\);/g, "// [REDACTED]");
-    content = content.replace(/ipcMain\.on\("terminal:[\s\S]*?\}\);/g, "// [REDACTED]");
+    content = content.replace(/<div class="terminal-panel">[\s\S]*?<\/div>/g, "<!-- [TERMINAL_PANEL_REDACTED] -->");
+    content = content.replace(/<link rel="stylesheet" href="node_modules\/xterm[\s\S]*?>/g, "<!-- [XTERM_CSS_REDACTED] -->");
+    content = content.replace(/<script src="node_modules\/xterm[\s\S]*?<\/script>/g, "<!-- [XTERM_JS_REDACTED] -->");
+    content = content.replace(/\.terminal-[\s\S]*?\{[\s\S]*?\}/g, "/* [TERMINAL_CSS_REDACTED] */");
+    content = content.replace(/function setupTerminal[\s\S]*?\}/g, "// [SETUP_TERMINAL_REDACTED]");
+    content = content.replace(/function logToTerminal[\s\S]*?\}/g, "// [LOG_TO_TERMINAL_REDACTED]");
+    content = content.replace(/const pty = require\("node-pty"\);[\s\S]*?setupPty\(win\);/g, "// [PTY_REDACTED]");
+    content = content.replace(/ipcMain\.on\("terminal:[\s\S]*?\}\);/g, "// [TERMINAL_IPC_REDACTED]");
+    content = content.replace(/\/\/ Real Terminal IPC[\s\S]*?onTerminalData[\s\S]*?\}/g, "// [TERMINAL_PRELOAD_REDACTED]");
 
     const clipped = content.length > MAX_FILE_CHARS ? `${content.slice(0, MAX_FILE_CHARS)}\n... [truncated]` : content;
     const block = `FILE: ${f.relativePath || f.path}\n\`\`\`\n${clipped}\n\`\`\``;
@@ -318,10 +318,25 @@ async function buildWorkspaceContext(prompt) {
 }
 
 function buildSystemPrompt() {
-  return `You are a professional coding assistant. Use JSON tool blocks for edits:
+  return `You are a professional coding assistant. To make changes to files, you MUST use JSON tool blocks. 
+You can provide multiple actions in a single block.
+
 \`\`\`json
-{ "actions": [{ "type": "write_file", "path": "path", "content": "..." }] }
-\`\`\``;
+{
+  "actions": [
+    {
+      "type": "write_file",
+      "path": "relative/path/to/file.js",
+      "content": "full content of the file..."
+    }
+  ]
+}
+\`\`\`
+
+IMPORTANT:
+1. Always provide the FULL content for write_file actions.
+2. Some parts of the code are redacted with markers like '<!-- [TERMINAL_PANEL_REDACTED] -->', '// [SETUP_TERMINAL_REDACTED]', etc. 
+3. You MUST preserve these markers exactly as they are in your output if you edit a file containing them. Do not attempt to guess or invent the redacted code.`;
 }
 
 async function sendMessage(event) {
@@ -368,26 +383,76 @@ async function sendMessage(event) {
 
 async function applyAgentActions(content) {
   if (!elements.agentMode.checked) return;
-  const blocks = [...content.matchAll(/```json\s*([\s\S]*?)```/gi)];
+  
+  const blocks = [...content.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
   let applied = 0;
+  let parseErrors = 0;
+
   for (const b of blocks) {
     try {
-      const parsed = JSON.parse(b[1]);
-      for (const a of parsed.actions || []) {
-        if (a.type === "write_file") {
-          const fullPath = (await window.workspace.resolvePath(state.rootPath, a.path));
-          logToTerminal(`Agent writing file: ${a.path}`);
-          await window.workspace.writeFile(fullPath, a.content);
-          state.fileCache.set(fullPath, a.content);
-          applied++;
+      const jsonStr = b[1].trim();
+      // Skip blocks that don't look like our JSON actions to avoid noise
+      if (!jsonStr.includes('"actions"') && !jsonStr.includes('"type"')) continue;
+      
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.actions && Array.isArray(parsed.actions)) {
+        for (const a of parsed.actions) {
+          if (a.type === "write_file" && a.path && a.content !== undefined) {
+            const fullPath = await window.workspace.resolvePath(state.rootPath, a.path);
+            let finalContent = a.content;
+
+            // Attempt to restore redacted parts if markers are present
+            if (finalContent.includes("_REDACTED]")) {
+              const originalContent = await window.workspace.readFile(fullPath).catch(() => "");
+              if (originalContent) {
+                const redactions = [
+                  { marker: "<!-- [TERMINAL_PANEL_REDACTED] -->", regex: /<div class="terminal-panel">[\s\S]*?<\/div>/ },
+                  { marker: "<!-- [XTERM_CSS_REDACTED] -->", regex: /<link rel="stylesheet" href="node_modules\/xterm[\s\S]*?>/ },
+                  { marker: "<!-- [XTERM_JS_REDACTED] -->", regex: /<script src="node_modules\/xterm[\s\S]*?<\/script>/ },
+                  { marker: "/* [TERMINAL_CSS_REDACTED] */", regex: /\.terminal-[\s\S]*?\{[\s\S]*?\}/ },
+                  { marker: "// [SETUP_TERMINAL_REDACTED]", regex: /function setupTerminal[\s\S]*?\}/ },
+                  { marker: "// [LOG_TO_TERMINAL_REDACTED]", regex: /function logToTerminal[\s\S]*?\}/ },
+                  { marker: "// [PTY_REDACTED]", regex: /const pty = require\("node-pty"\);[\s\S]*?setupPty\(win\);/ },
+                  { marker: "// [TERMINAL_IPC_REDACTED]", regex: /ipcMain\.on\("terminal:[\s\S]*?\}\);/ },
+                  { marker: "// [TERMINAL_PRELOAD_REDACTED]", regex: /\/\/ Real Terminal IPC[\s\S]*?onTerminalData[\s\S]*?\}/ },
+                ];
+
+                for (const r of redactions) {
+                  if (finalContent.includes(r.marker)) {
+                    const match = originalContent.match(r.regex);
+                    if (match) {
+                      finalContent = finalContent.replace(r.marker, match[0]);
+                    }
+                  }
+                }
+              }
+            }
+
+            logToTerminal(`Agent writing file: ${a.path}`);
+            await window.workspace.writeFile(fullPath, finalContent);
+            state.fileCache.set(fullPath, finalContent);
+            if (state.activePath === fullPath) {
+              elements.editor.value = finalContent;
+              state.activeContent = finalContent;
+              updateEditorMeta();
+            }
+            applied++;
+          }
         }
       }
-    } catch {}
+    } catch (err) {
+      parseErrors++;
+      console.error("Failed to parse agent action block:", err);
+      logToTerminal(`Action Parse Error: ${err.message}`, "error");
+    }
   }
+
   if (applied > 0) {
     await refreshWorkspace();
     logToTerminal(`Successfully applied ${applied} agent edits.`);
     setStatus(`Applied ${applied} edits.`);
+  } else if (blocks.length > 0 && applied === 0) {
+    logToTerminal("Agent provided code blocks but no valid actions were identified.", "warn");
   }
 }
 

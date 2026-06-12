@@ -67,8 +67,8 @@ http://localhost:1234/v1
 ### 2. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/qwen-agent-coder-studio.git
-cd qwen-agent-coder-studio
+git clone https://github.com/<repo>
+cd <repo>
 ```
 
 ---
